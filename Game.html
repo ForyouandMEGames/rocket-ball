@@ -43,8 +43,9 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(13, 15, 18, 0.85);
-            backdrop-filter: blur(4px);
+            background: rgba(13, 15, 18, 0.88);
+            backdrop-filter: blur(5px);
+            z-index: 10;
         }
         h1 {
             font-size: 4rem;
@@ -55,20 +56,25 @@
             background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             text-shadow: 0 10px 20px rgba(0,0,0,0.5);
         }
         p.subtitle {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             color: #8a99ad;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
+        }
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
         }
         .btn {
             background: linear-gradient(135deg, #ff512f 0%, #dd2476 100%);
             color: white;
             border: none;
-            padding: 16px 48px;
-            font-size: 1.5rem;
+            padding: 14px 36px;
+            font-size: 1.2rem;
             font-weight: bold;
             border-radius: 50px;
             cursor: pointer;
@@ -77,25 +83,33 @@
             text-transform: uppercase;
             letter-spacing: 1px;
         }
+        .btn-secondary {
+            background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+            box-shadow: 0 6px 20px rgba(0, 198, 255, 0.3);
+        }
         .btn:hover {
             transform: translateY(-3px) scale(1.03);
             box-shadow: 0 10px 25px rgba(221, 36, 118, 0.6);
         }
+        .btn-secondary:hover {
+            box-shadow: 0 10px 25px rgba(0, 198, 255, 0.5);
+        }
         .btn:active {
             transform: translateY(1px);
         }
-        .controls-hint {
-            position: absolute;
-            bottom: 20px;
-            display: flex;
-            gap: 30px;
+        .controls-card {
             background: rgba(255, 255, 255, 0.05);
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            color: #a0aab5;
+            padding: 18px 28px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.95rem;
+            color: #d0d7de;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            text-align: center;
         }
-        .controls-hint span {
+        .controls-card span {
             color: #00d2ff;
             font-weight: bold;
         }
@@ -111,15 +125,30 @@
             pointer-events: none;
             font-size: 2.5rem;
             font-weight: 800;
+            z-index: 5;
         }
         .score {
-            background: rgba(0, 0, 0, 0.4);
+            background: rgba(0, 0, 0, 0.5);
             padding: 5px 25px;
             border-radius: 10px;
             border: 2px solid rgba(255, 255, 255, 0.1);
         }
         .blue-score { color: #00d2ff; }
         .red-score { color: #ff4b4b; }
+        #tutorial-banner {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 210, 255, 0.2);
+            border: 1px solid #00d2ff;
+            color: #00d2ff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            z-index: 5;
+        }
         .hidden { display: none !important; }
     </style>
 </head>
@@ -131,19 +160,28 @@
     <!-- HUD -->
     <div id="hud" class="hidden">
         <div class="score blue-score" id="blueScore">0</div>
-        <div style="font-size: 1.2rem; color: #666;">VS</div>
+        <div style="font-size: 1.2rem; color: #666;" id="vsLabel">VS</div>
         <div class="score red-score" id="redScore">0</div>
     </div>
+
+    <!-- Tutorial Banner -->
+    <div id="tutorial-banner" class="hidden">TUTORIAL MODE (NO BOT)</div>
 
     <!-- Start / Home Screen -->
     <div id="homeScreen" class="screen">
         <h1>Rocket Ball</h1>
         <p class="subtitle">Rocket League, but faster and dynamic.</p>
-        <button class="btn" onclick="startGame()">Play Game</button>
         
-        <div class="controls-hint">
-            <div><span>W A S D</span> / <span>Arrows</span> Drive</div>
-            <div><span>SPACE</span> Boost</div>
+        <div class="button-group">
+            <button class="btn btn-secondary" onclick="startTutorial()">Practice / Tutorial</button>
+            <button class="btn" onclick="startGame(false)">Play Vs Bot</button>
+        </div>
+        
+        <div class="controls-card">
+            <div><span>W / Up Arrow</span> = Drive Forward (Direction of Arrow)</div>
+            <div><span>S / Down Arrow</span> = Reverse / Brake</div>
+            <div><span>A / D or Left / Right</span> = Turn Steering Wheel</div>
+            <div><span>SPACEBAR</span> = Boost Rocket Engine</div>
         </div>
     </div>
 </div>
@@ -154,10 +192,12 @@ const ctx = canvas.getContext('2d');
 
 const homeScreen = document.getElementById('homeScreen');
 const hud = document.getElementById('hud');
+const tutorialBanner = document.getElementById('tutorial-banner');
 const blueScoreEl = document.getElementById('blueScore');
 const redScoreEl = document.getElementById('redScore');
+const vsLabel = document.getElementById('vsLabel');
 
-let animationId;
+let isTutorial = false;
 let gameState = 'MENU'; // 'MENU' or 'PLAYING'
 let scores = { blue: 0, red: 0 };
 
@@ -171,7 +211,7 @@ window.addEventListener('keyup', e => {
     keys[e.code] = false;
 });
 
-// Game Entities
+// Game Field Settings
 const field = {
     width: 1000,
     height: 600,
@@ -187,13 +227,15 @@ class Car {
         this.radius = 22;
         this.angle = isAI ? Math.PI : 0;
         this.speed = 0;
-        this.maxSpeed = 7;
-        this.accel = 0.2;
-        this.friction = 0.96;
-        this.turnSpeed = 0.07;
+        this.maxSpeed = 6.5;
+        this.accel = 0.22;
+        this.friction = 0.95;
+        this.turnSpeed = 0.085;
         this.color = color;
         this.isAI = isAI;
         this.boost = 100;
+        this.vx = 0;
+        this.vy = 0;
     }
 
     reset() {
@@ -202,27 +244,29 @@ class Car {
         this.angle = this.isAI ? Math.PI : 0;
         this.speed = 0;
         this.boost = 100;
+        this.vx = 0;
+        this.vy = 0;
     }
 
     update(ball) {
         if (!this.isAI) {
-            // Steering
+            // Steering Controls
             if (keys['KeyA'] || keys['ArrowLeft']) this.angle -= this.turnSpeed;
             if (keys['KeyD'] || keys['ArrowRight']) this.angle += this.turnSpeed;
 
-            // Driving
             let currentAccel = this.accel;
             let currentMaxSpeed = this.maxSpeed;
 
-            // Boost
+            // Boost Control
             if (keys['Space'] && this.boost > 0) {
-                currentAccel *= 2.5;
-                currentMaxSpeed *= 1.6;
-                this.boost = Math.max(0, this.boost - 0.8);
+                currentAccel *= 2.2;
+                currentMaxSpeed *= 1.5;
+                this.boost = Math.max(0, this.boost - 0.7);
             } else if (this.boost < 100) {
-                this.boost += 0.1; // Slow recharge
+                this.boost += 0.12; // Slow recharge
             }
 
+            // Drive Controls
             if (keys['KeyW'] || keys['ArrowUp']) {
                 this.speed = Math.min(this.speed + currentAccel, currentMaxSpeed);
             } else if (keys['KeyS'] || keys['ArrowDown']) {
@@ -231,29 +275,43 @@ class Car {
                 this.speed *= this.friction;
             }
         } else {
-            // Simple AI Logic
+            // --- SLOWER, EASIER BOT LOGIC ---
             let dx = ball.x - this.x;
             let dy = ball.y - this.y;
             let targetAngle = Math.atan2(dy, dx);
             
-            // Angle interpolation
+            // Normalize angle diff
             let diff = targetAngle - this.angle;
             while (diff < -Math.PI) diff += Math.PI * 2;
             while (diff > Math.PI) diff -= Math.PI * 2;
             
-            this.angle += Math.sign(diff) * Math.min(Math.abs(diff), this.turnSpeed * 0.8);
-            this.speed = Math.min(this.speed + this.accel * 0.8, this.maxSpeed * 0.9);
+            // Slower turning & slower max speed for beginner ease
+            this.angle += Math.sign(diff) * Math.min(Math.abs(diff), this.turnSpeed * 0.5);
+            
+            // Bot drives slightly slower
+            let botMaxSpeed = this.maxSpeed * 0.55;
+            this.speed = Math.min(this.speed + this.accel * 0.4, botMaxSpeed);
         }
 
-        // Apply Movement
-        this.x += Math.cos(this.angle) * this.speed;
-        this.y += Math.sin(this.angle) * this.speed;
+        // Velocity vectors from driving speed
+        this.vx = Math.cos(this.angle) * this.speed;
+        this.vy = Math.sin(this.angle) * this.speed;
 
-        // Wall collisions
-        this.x = Math.max(this.radius, Math.min(field.width - this.radius, this.x));
-        
-        // Goal mouth bounds allowance
+        // Apply Position Update
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Wall Bound Collisions
         const inGoalY = this.y > (field.height - field.goalSize) / 2 && this.y < (field.height + field.goalSize) / 2;
+        
+        if (this.x - this.radius < 0 && !inGoalY) {
+            this.x = this.radius;
+            this.speed = 0;
+        }
+        if (this.x + this.radius > field.width && !inGoalY) {
+            this.x = field.width - this.radius;
+            this.speed = 0;
+        }
         if (!inGoalY) {
             this.y = Math.max(this.radius, Math.min(field.height - this.radius, this.y));
         }
@@ -262,7 +320,19 @@ class Car {
     draw() {
         ctx.save();
         ctx.translate(this.x, this.y);
+
+        // --- DIRECTION INDICATOR ARROW (FIXES DIRECTION ISSUE) ---
+        ctx.save();
         ctx.rotate(this.angle);
+        
+        // Arrow Pointer
+        ctx.fillStyle = '#ffff00';
+        ctx.beginPath();
+        ctx.moveTo(32, 0);
+        ctx.lineTo(22, -8);
+        ctx.lineTo(22, 8);
+        ctx.closePath();
+        ctx.fill();
 
         // Car Body
         ctx.fillStyle = this.color;
@@ -270,21 +340,37 @@ class Car {
         ctx.roundRect(-20, -14, 40, 28, 6);
         ctx.fill();
 
-        // Windshield
+        // Windshield (Front orientation indicator)
         ctx.fillStyle = '#111';
         ctx.beginPath();
         ctx.roundRect(0, -10, 12, 20, 3);
         ctx.fill();
 
-        // Boost flame indicator
-        if (!this.isAI && keys['Space'] && this.boost > 0 && this.speed > 0) {
+        // Boost Flames
+        if (!this.isAI && keys['Space'] && this.boost > 0 && Math.abs(this.speed) > 0.5) {
             ctx.fillStyle = '#ff9900';
             ctx.beginPath();
             ctx.moveTo(-20, -6);
-            ctx.lineTo(-35 - Math.random() * 10, 0);
+            ctx.lineTo(-38 - Math.random() * 10, 0);
             ctx.lineTo(-20, 6);
             ctx.closePath();
             ctx.fill();
+        }
+        ctx.restore();
+
+        // Boost Gauge Ring (Only for player)
+        if (!this.isAI) {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.radius + 6, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(0, 0, this.radius + 6, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * (this.boost / 100)));
+            ctx.strokeStyle = '#00d2ff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
         }
 
         ctx.restore();
@@ -325,7 +411,7 @@ class Ball {
             this.vy *= -0.8;
         }
 
-        // Left/Right Walls & Goals
+        // Goal bounds logic
         const inGoalY = this.y > (field.height - field.goalSize) / 2 && this.y < (field.height + field.goalSize) / 2;
         
         if (!inGoalY) {
@@ -338,7 +424,7 @@ class Ball {
                 this.vx *= -0.8;
             }
         } else {
-            // Goal scored check
+            // Goal check
             if (this.x < -10) {
                 scoreGoal('red');
             } else if (this.x > field.width + 10) {
@@ -363,7 +449,30 @@ const player = new Car(200, field.height / 2, '#00d2ff');
 const ai = new Car(800, field.height / 2, '#ff4b4b', true);
 const ball = new Ball(field.width / 2, field.height / 2);
 
-function handleCollisions(car, ball) {
+// --- CAR-TO-CAR COLLISION (PROBLEM 3 FIX) ---
+function handleCarCarCollision(car1, car2) {
+    let dx = car2.x - car1.x;
+    let dy = car2.y - car1.y;
+    let dist = Math.hypot(dx, dy);
+    let minDist = car1.radius + car2.radius;
+
+    if (dist < minDist) {
+        let overlap = minDist - dist;
+        let angle = Math.atan2(dy, dx);
+
+        // Push cars apart
+        car1.x -= Math.cos(angle) * (overlap / 2);
+        car1.y -= Math.sin(angle) * (overlap / 2);
+        car2.x += Math.cos(angle) * (overlap / 2);
+        car2.y += Math.sin(angle) * (overlap / 2);
+
+        // Elastic impact force reaction
+        car1.speed *= -0.5;
+        car2.speed *= -0.5;
+    }
+}
+
+function handleCarBallCollision(car, ball) {
     let dx = ball.x - car.x;
     let dy = ball.y - car.y;
     let dist = Math.hypot(dx, dy);
@@ -377,10 +486,10 @@ function handleCollisions(car, ball) {
         ball.x += Math.cos(angle) * overlap;
         ball.y += Math.sin(angle) * overlap;
 
-        // Transfer momentum
-        let power = Math.max(Math.abs(car.speed) * 1.4, 3);
-        ball.vx = Math.cos(angle) * power;
-        ball.vy = Math.sin(angle) * power;
+        // Momentum Transfer
+        let hitPower = Math.max(Math.abs(car.speed) * 1.5, 3.5);
+        ball.vx = Math.cos(angle) * hitPower;
+        ball.vy = Math.sin(angle) * hitPower;
     }
 }
 
@@ -390,7 +499,7 @@ function scoreGoal(winner) {
     redScoreEl.textContent = scores.red;
     
     player.reset();
-    ai.reset();
+    if (!isTutorial) ai.reset();
     ball.reset();
 }
 
@@ -414,11 +523,11 @@ function drawField() {
     // Goals
     const goalTop = (field.height - field.goalSize) / 2;
     
-    // Left Goal (Blue defense)
+    // Left Goal
     ctx.fillStyle = 'rgba(0, 210, 255, 0.2)';
     ctx.fillRect(0, goalTop, 20, field.goalSize);
     
-    // Right Goal (Red defense)
+    // Right Goal
     ctx.fillStyle = 'rgba(255, 75, 75, 0.2)';
     ctx.fillRect(field.width - 20, goalTop, 20, field.goalSize);
 }
@@ -428,26 +537,45 @@ function gameLoop() {
 
     if (gameState === 'PLAYING') {
         player.update(ball);
-        ai.update(ball);
         ball.update();
 
-        handleCollisions(player, ball);
-        handleCollisions(ai, ball);
+        handleCarBallCollision(player, ball);
+
+        if (!isTutorial) {
+            ai.update(ball);
+            handleCarBallCollision(ai, ball);
+            handleCarCarCollision(player, ai); // Bump/Collision handling
+        }
     }
 
     drawField();
     player.draw();
-    ai.draw();
+    if (!isTutorial) ai.draw();
     ball.draw();
 
-    animationId = requestAnimationFrame(gameLoop);
+    requestAnimationFrame(gameLoop);
 }
 
-function startGame() {
+function startTutorial() {
+    isTutorial = true;
+    tutorialBanner.classList.remove('hidden');
+    redScoreEl.classList.add('hidden');
+    vsLabel.classList.add('hidden');
+    startGame(true);
+}
+
+function startGame(tutorialMode = false) {
     gameState = 'PLAYING';
     homeScreen.classList.add('hidden');
     hud.classList.remove('hidden');
     
+    if (!tutorialMode) {
+        isTutorial = false;
+        tutorialBanner.classList.add('hidden');
+        redScoreEl.classList.remove('hidden');
+        vsLabel.classList.remove('hidden');
+    }
+
     scores = { blue: 0, red: 0 };
     blueScoreEl.textContent = 0;
     redScoreEl.textContent = 0;
@@ -457,7 +585,7 @@ function startGame() {
     ball.reset();
 }
 
-// Initial draw loop for background rendering on home screen
+// Initial loop
 gameLoop();
 </script>
 </body>
