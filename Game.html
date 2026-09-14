@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocket Ball</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            background-color: #0d0f12;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 1000px;
+            height: 600px;
+            box-shadow: 0 0 30px rgba(0, 200, 255, 0.2);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #15181e;
+        }
+        canvas {
+            display: block;
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(13, 15, 18, 0.85);
+            backdrop-filter: blur(4px);
+        }
+        h1 {
+            font-size: 4rem;
+            font-weight: 900;
+            font-style: italic;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            text-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+        p.subtitle {
+            font-size: 1.2rem;
+            color: #8a99ad;
+            margin-bottom: 40px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #ff512f 0%, #dd2476 100%);
+            color: white;
+            border: none;
+            padding: 16px 48px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 6px 20px rgba(221, 36, 118, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn:hover {
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 10px 25px rgba(221, 36, 118, 0.6);
+        }
+        .btn:active {
+            transform: translateY(1px);
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            gap: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #a0aab5;
+        }
+        .controls-hint span {
+            color: #00d2ff;
+            font-weight: bold;
+        }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            pointer-events: none;
+            font-size: 2.5rem;
+            font-weight: 800;
+        }
+        .score {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 5px 25px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        .blue-score { color: #00d2ff; }
+        .red-score { color: #ff4b4b; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="1000" height="600"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+        <div class="score blue-score" id="blueScore">0</div>
+        <div style="font-size: 1.2rem; color: #666;">VS</div>
+        <div class="score red-score" id="redScore">0</div>
+    </div>
+
+    <!-- Start / Home Screen -->
+    <div id="homeScreen" class="screen">
+        <h1>Rocket Ball</h1>
+        <p class="subtitle">Rocket League, but faster and dynamic.</p>
+        <button class="btn" onclick="startGame()">Play Game</button>
+        
+        <div class="controls-hint">
+            <div><span>W A S D</span> / <span>Arrows</span> Drive</div>
+            <div><span>SPACE</span> Boost</div>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const homeScreen = document.getElementById('homeScreen');
+const hud = document.getElementById('hud');
+const blueScoreEl = document.getElementById('blueScore');
+const redScoreEl = document.getElementById('redScore');
+
+let animationId;
+let gameState = 'MENU'; // 'MENU' or 'PLAYING'
+let scores = { blue: 0, red: 0 };
+
+// Controls State
+const keys = {};
+
+window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+});
+window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+});
+
+// Game Entities
+const field = {
+    width: 1000,
+    height: 600,
+    goalSize: 180
+};
+
+class Car {
+    constructor(x, y, color, isAI = false) {
+        this.x = x;
+        this.y = y;
+        this.startX = x;
+        this.startY = y;
+        this.radius = 22;
+        this.angle = isAI ? Math.PI : 0;
+        this.speed = 0;
+        this.maxSpeed = 7;
+        this.accel = 0.2;
+        this.friction = 0.96;
+        this.turnSpeed = 0.07;
+        this.color = color;
+        this.isAI = isAI;
+        this.boost = 100;
+    }
+
+    reset() {
+        this.x = this.startX;
+        this.y = this.startY;
+        this.angle = this.isAI ? Math.PI : 0;
+        this.speed = 0;
+        this.boost = 100;
+    }
+
+    update(ball) {
+        if (!this.isAI) {
+            // Steering
+            if (keys['KeyA'] || keys['ArrowLeft']) this.angle -= this.turnSpeed;
+            if (keys['KeyD'] || keys['ArrowRight']) this.angle += this.turnSpeed;
+
+            // Driving
+            let currentAccel = this.accel;
+            let currentMaxSpeed = this.maxSpeed;
+
+            // Boost
+            if (keys['Space'] && this.boost > 0) {
+                currentAccel *= 2.5;
+                currentMaxSpeed *= 1.6;
+                this.boost = Math.max(0, this.boost - 0.8);
+            } else if (this.boost < 100) {
+                this.boost += 0.1; // Slow recharge
+            }
+
+            if (keys['KeyW'] || keys['ArrowUp']) {
+                this.speed = Math.min(this.speed + currentAccel, currentMaxSpeed);
+            } else if (keys['KeyS'] || keys['ArrowDown']) {
+                this.speed = Math.max(this.speed - currentAccel, -currentMaxSpeed / 2);
+            } else {
+                this.speed *= this.friction;
+            }
+        } else {
+            // Simple AI Logic
+            let dx = ball.x - this.x;
+            let dy = ball.y - this.y;
+            let targetAngle = Math.atan2(dy, dx);
+            
+            // Angle interpolation
+            let diff = targetAngle - this.angle;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            
+            this.angle += Math.sign(diff) * Math.min(Math.abs(diff), this.turnSpeed * 0.8);
+            this.speed = Math.min(this.speed + this.accel * 0.8, this.maxSpeed * 0.9);
+        }
+
+        // Apply Movement
+        this.x += Math.cos(this.angle) * this.speed;
+        this.y += Math.sin(this.angle) * this.speed;
+
+        // Wall collisions
+        this.x = Math.max(this.radius, Math.min(field.width - this.radius, this.x));
+        
+        // Goal mouth bounds allowance
+        const inGoalY = this.y > (field.height - field.goalSize) / 2 && this.y < (field.height + field.goalSize) / 2;
+        if (!inGoalY) {
+            this.y = Math.max(this.radius, Math.min(field.height - this.radius, this.y));
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        // Car Body
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.roundRect(-20, -14, 40, 28, 6);
+        ctx.fill();
+
+        // Windshield
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.roundRect(0, -10, 12, 20, 3);
+        ctx.fill();
+
+        // Boost flame indicator
+        if (!this.isAI && keys['Space'] && this.boost > 0 && this.speed > 0) {
+            ctx.fillStyle = '#ff9900';
+            ctx.beginPath();
+            ctx.moveTo(-20, -6);
+            ctx.lineTo(-35 - Math.random() * 10, 0);
+            ctx.lineTo(-20, 6);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+}
+
+class Ball {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.radius = 16;
+        this.friction = 0.985;
+    }
+
+    reset() {
+        this.x = field.width / 2;
+        this.y = field.height / 2;
+        this.vx = 0;
+        this.vy = 0;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+
+        this.vx *= this.friction;
+        this.vy *= this.friction;
+
+        // Top/Bottom bounce
+        if (this.y - this.radius <= 0) {
+            this.y = this.radius;
+            this.vy *= -0.8;
+        }
+        if (this.y + this.radius >= field.height) {
+            this.y = field.height - this.radius;
+            this.vy *= -0.8;
+        }
+
+        // Left/Right Walls & Goals
+        const inGoalY = this.y > (field.height - field.goalSize) / 2 && this.y < (field.height + field.goalSize) / 2;
+        
+        if (!inGoalY) {
+            if (this.x - this.radius <= 0) {
+                this.x = this.radius;
+                this.vx *= -0.8;
+            }
+            if (this.x + this.radius >= field.width) {
+                this.x = field.width - this.radius;
+                this.vx *= -0.8;
+            }
+        } else {
+            // Goal scored check
+            if (this.x < -10) {
+                scoreGoal('red');
+            } else if (this.x > field.width + 10) {
+                scoreGoal('blue');
+            }
+        }
+    }
+
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#222';
+        ctx.stroke();
+    }
+}
+
+// Instantiate Objects
+const player = new Car(200, field.height / 2, '#00d2ff');
+const ai = new Car(800, field.height / 2, '#ff4b4b', true);
+const ball = new Ball(field.width / 2, field.height / 2);
+
+function handleCollisions(car, ball) {
+    let dx = ball.x - car.x;
+    let dy = ball.y - car.y;
+    let dist = Math.hypot(dx, dy);
+    let minDist = car.radius + ball.radius;
+
+    if (dist < minDist) {
+        let angle = Math.atan2(dy, dx);
+        let overlap = minDist - dist;
+
+        // Push ball out of car
+        ball.x += Math.cos(angle) * overlap;
+        ball.y += Math.sin(angle) * overlap;
+
+        // Transfer momentum
+        let power = Math.max(Math.abs(car.speed) * 1.4, 3);
+        ball.vx = Math.cos(angle) * power;
+        ball.vy = Math.sin(angle) * power;
+    }
+}
+
+function scoreGoal(winner) {
+    scores[winner]++;
+    blueScoreEl.textContent = scores.blue;
+    redScoreEl.textContent = scores.red;
+    
+    player.reset();
+    ai.reset();
+    ball.reset();
+}
+
+function drawField() {
+    // Pitch Background
+    ctx.fillStyle = '#1e232d';
+    ctx.fillRect(0, 0, field.width, field.height);
+
+    // Center Line & Circle
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(field.width / 2, 0);
+    ctx.lineTo(field.width / 2, field.height);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(field.width / 2, field.height / 2, 80, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Goals
+    const goalTop = (field.height - field.goalSize) / 2;
+    
+    // Left Goal (Blue defense)
+    ctx.fillStyle = 'rgba(0, 210, 255, 0.2)';
+    ctx.fillRect(0, goalTop, 20, field.goalSize);
+    
+    // Right Goal (Red defense)
+    ctx.fillStyle = 'rgba(255, 75, 75, 0.2)';
+    ctx.fillRect(field.width - 20, goalTop, 20, field.goalSize);
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, field.width, field.height);
+
+    if (gameState === 'PLAYING') {
+        player.update(ball);
+        ai.update(ball);
+        ball.update();
+
+        handleCollisions(player, ball);
+        handleCollisions(ai, ball);
+    }
+
+    drawField();
+    player.draw();
+    ai.draw();
+    ball.draw();
+
+    animationId = requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    gameState = 'PLAYING';
+    homeScreen.classList.add('hidden');
+    hud.classList.remove('hidden');
+    
+    scores = { blue: 0, red: 0 };
+    blueScoreEl.textContent = 0;
+    redScoreEl.textContent = 0;
+    
+    player.reset();
+    ai.reset();
+    ball.reset();
+}
+
+// Initial draw loop for background rendering on home screen
+gameLoop();
+</script>
+</body>
+</html>
